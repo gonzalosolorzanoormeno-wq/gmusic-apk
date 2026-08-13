@@ -11,9 +11,9 @@
   },
   "devDependencies": {
     "wrangler": "^4.0.0",
-    "@capacitor/core": "^6.1.2",
-    "@capacitor/cli": "^6.1.2",
-    "@capacitor/android": "^6.1.2"
+    "@capacitor/core": "6.1.2",
+    "@capacitor/cli": "6.1.2",
+    "@capacitor/android": "6.1.2"
   },
   "type": "module"
 }
