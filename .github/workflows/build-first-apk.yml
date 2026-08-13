@@ -28,9 +28,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android API 35
+      - name: Install Android API 36
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Install dependencies
         run: npm install
@@ -44,13 +44,13 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Configure Android API 35 and Media3 requirements
+      - name: Configure Android API 36 and Media3 requirements
         run: |
           sed -i "s/minSdkVersion = [0-9]*/minSdkVersion = 23/" android/variables.gradle
-          sed -i "s/compileSdkVersion = [0-9]*/compileSdkVersion = 35/" android/variables.gradle
+          sed -i "s/compileSdkVersion = [0-9]*/compileSdkVersion = 36/" android/variables.gradle
           sed -i "s/targetSdkVersion = [0-9]*/targetSdkVersion = 35/" android/variables.gradle
-          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.6.1/" android/build.gradle
-          sed -i "s#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip#" android/gradle/wrapper/gradle-wrapper.properties
+          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.10.1/" android/build.gradle
+          sed -i "s#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip#" android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Apply GMusic native Media3 files
         run: |
@@ -62,9 +62,9 @@ jobs:
       - name: Verify Android build configuration
         run: |
           grep "minSdkVersion = 23" android/variables.gradle
-          grep "compileSdkVersion = 35" android/variables.gradle
+          grep "compileSdkVersion = 36" android/variables.gradle
           grep "targetSdkVersion = 35" android/variables.gradle
-          grep "com.android.tools.build:gradle:8.6.1" android/build.gradle
+          grep "com.android.tools.build:gradle:8.10.1" android/build.gradle
           grep "media3-session" android/app/build.gradle
 
       - name: Build debug APK
