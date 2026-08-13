@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="description" content="GMusic, biblioteca musical personal por streaming." />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
+  <title>GMusic</title>
+  <link rel="manifest" href="/manifest.webmanifest?v=3.5.6" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css?v=15-youtube-dj" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#" aria-label="GMusic Inicio"><span class="brand-mark">G</span><span>GMusic</span></a>
+      <nav>
+        <button class="nav-item active" data-view="home">⌂ <span>Inicio</span></button>
+        <button class="nav-item" data-view="all">♫ <span>Biblioteca</span></button>
+        <button class="nav-item" data-view="artists">◉ <span>Artistas</span></button>
+        <button class="nav-item" data-view="albums">▣ <span>Álbumes</span></button>
+        <button class="nav-item" data-view="favorites">♥ <span>Favoritos</span></button>
+        <button class="nav-item" data-view="recent">↺ <span>Recientes</span></button>
+        <button class="nav-item" data-view="playlists">≡ <span>Playlists</span></button>
+        <button class="nav-item" data-view="discover">✦ <span>Descubrir / DJ</span></button>
+        <button class="nav-item" data-view="requests">＋ <span>Solicitudes</span></button>
+        <button class="nav-item" data-view="stats">▥ <span>Estadísticas</span></button>
+        <button class="nav-item hidden" data-view="admin" data-admin-only>⚙ <span>Administración</span></button>
+      </nav>
+      <div class="credits"><span id="versionLabel">v3.5.6</span></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow">TU MÚSICA · TU NUBE</p><h1 id="pageTitle">Tu biblioteca</h1></div>
+        <div class="top-actions"><button id="profileBtn" class="profile-chip hidden" title="Mi perfil">👤 <span id="profileName">Perfil</span></button><button id="queueTopBtn" class="ghost">☷ Cola <span id="queueCount">0</span></button><button id="accessBtn" class="ghost">🔐 Acceso</button><button id="uploadBtn" class="primary hidden" data-admin-only>＋ Subir música</button></div>
+      </header>
+
+      <section class="hero" id="hero">
+        <div><span class="pill" id="connectionBadge">Comprobando conexión…</span><h2>Escucha lo tuyo, sin mensualidad.</h2><p>Streaming privado desde Google Drive, con cola, álbumes, artistas y modo offline selectivo.</p></div>
+        <div class="hero-note"><span>☁</span><div><b>Modo eficiente</b><br /><small>Menos trabajo en segundo plano</small></div></div>
+      </section>
+
+      <div id="audioGate" class="audio-gate hidden"><span>El navegador pausó la reproducción.</span><button id="resumeAudioBtn" class="primary">▶ Continuar reproducción</button></div>
+
+      <section class="toolbar">
+        <label class="search"><span>⌕</span><input id="searchInput" type="search" placeholder="Buscar canción, artista o álbum" /></label>
+        <div class="toolbar-actions"><button id="shuffleBtn" class="chip" title="Aleatorio">🔀</button><button id="repeatBtn" class="chip" title="Repetir">↻ Off</button><button id="favoritesOfflineBtn" class="chip hidden" type="button">⇩ Descargar favoritos</button><button id="offlineCenterBtn" class="chip hidden" type="button">⬇ Offline</button><span id="trackCount" class="muted">0 canciones</span></div>
+      </section>
+
+      <section id="collectionGrid" class="collection-grid hidden"></section>
+      <section id="emptyState" class="empty hidden"><div class="empty-icon">♫</div><h3>Aún no hay canciones</h3><p id="emptyStateText">Sube tus archivos de audio y aparecerán aquí.</p><button class="primary hidden" id="emptyUploadBtn" data-admin-only>Subir música</button></section>
+      <div id="trackListHeader" class="track-list-header"><span>#</span><span></span><span>Título</span><span>Artista</span><span>Álbum</span><span class="thdur">⏱</span></div>
+      <section id="trackList" class="track-list" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <footer class="player" id="playerBar">
+    <div class="now-playing"><button type="button" id="nowPlayingOpen" class="now-playing-trigger"><img id="nowCover" class="cover-mini" src="/icon.svg" alt="" /><div class="truncate"><strong id="nowTitle">Selecciona una canción</strong><span id="nowArtist">GMusic</span></div></button><button id="nowFavBtn" class="fav" aria-label="Favorito">♥</button></div>
+    <div class="player-center"><div class="controls"><button id="shuffleMiniBtn" aria-label="Aleatorio">🔀</button><button id="prevBtn" aria-label="Anterior">⏮</button><button id="playBtn" class="play" aria-label="Reproducir">▶</button><button id="nextBtn" aria-label="Siguiente">⏭</button><button id="repeatMiniBtn" aria-label="Repetir">↻</button><button id="queueBtn" class="queue-player-btn" aria-label="Abrir cola" title="Cola">☷ <span id="queueMiniCount">0</span></button></div><div class="timeline"><span id="currentTime">0:00</span><input id="seek" type="range" min="0" max="100" value="0" /><span id="duration">0:00</span></div></div>
+    <div class="volume">🔊 <input id="volume" type="range" min="0" max="1" value="0.85" step="0.05" /></div>
+    <audio id="audio" preload="auto" playsinline></audio>
+  </footer>
+
+  <section id="nowPlayingSheet" class="np-sheet" aria-hidden="true">
+    <div class="np-top"><button type="button" id="npCloseBtn" class="icon-btn" aria-label="Cerrar">︾</button><span class="np-eyebrow">REPRODUCIENDO AHORA</span><button type="button" id="npMoreBtn" class="icon-btn" aria-label="Más opciones">⋯</button></div>
+    <div class="np-art"><img id="npCover" src="/icon.svg" alt="" /></div>
+    <div class="np-info"><div class="truncate"><strong id="npTitle">Selecciona una canción</strong><span id="npArtist">GMusic</span></div><button id="npFavBtn" class="fav" aria-label="Favorito">♥</button></div>
+    <div class="np-timeline"><input id="npSeek" type="range" min="0" max="100" value="0" /><div class="np-times"><span id="npCurrentTime">0:00</span><span id="npDuration">0:00</span></div></div>
+    <div class="np-controls"><button type="button" id="npShuffleBtn" aria-label="Aleatorio">🔀</button><button type="button" id="npPrevBtn" aria-label="Anterior">⏮</button><button type="button" id="npPlayBtn" class="play" aria-label="Reproducir">▶</button><button type="button" id="npNextBtn" aria-label="Siguiente">⏭</button><button type="button" id="npRepeatBtn" aria-label="Repetir">↻</button></div>
+  </section>
+
+  <dialog id="uploadDialog">
+    <form id="uploadForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">AGREGAR</p><h2>Subida masiva</h2></div><button type="button" class="icon-btn" data-close="uploadDialog">✕</button></div>
+      <label class="dropzone" id="dropzone"><input id="fileInput" name="file" type="file" accept="audio/*,.mp3,.mpeg,.m4a,.aac,.ogg,.opus,.wav,.flac" multiple /><span class="drop-icon">⇧</span><b id="fileLabel">Elige o arrastra canciones</b><small>GMusic intentará leer metadatos MP3 y organizar el resto por nombre de archivo.</small></label>
+      <div id="uploadPreview" class="upload-preview"></div>
+      <div id="uploadProgress" class="status-line"></div>
+      <div class="dialog-actions"><button type="button" class="ghost" data-close="uploadDialog">Cancelar</button><button type="submit" class="primary">Subir seleccionadas</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="accessDialog"><div class="access-panel"><div class="dialog-head"><div><p class="eyebrow">PRIVACIDAD</p><h2>Acceso a GMusic</h2></div><button type="button" class="icon-btn" data-close="accessDialog">✕</button></div><p class="muted">Tu código privado solo crea una sesión firmada.</p><label>Código privado<input id="accessInput" type="text" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" /></label><p id="accessStatus" class="status-line" data-type="neutral" aria-live="polite"></p><div class="dialog-actions split-actions"><button type="button" class="danger-text" id="logoutBtn">Cerrar sesión</button><button type="button" class="primary" id="loginBtn">Entrar</button></div></div></dialog>
+
+  <dialog id="queueDialog"><div class="queue-panel"><div class="dialog-head"><div><p class="eyebrow">REPRODUCCIÓN</p><h2>Cola</h2></div><button type="button" class="icon-btn" data-close="queueDialog">✕</button></div><div class="queue-heading"><span>A continuación</span><button id="clearQueueBtn" class="danger-text">Limpiar agregadas</button></div><div id="queueList" class="queue-list"></div></div></dialog>
+
+  <dialog id="actionDialog"><div class="action-panel"><div class="dialog-head"><div><p class="eyebrow">CANCIÓN</p><h2 id="actionTrackTitle">Opciones</h2></div><button type="button" class="icon-btn" data-close="actionDialog">✕</button></div><div class="action-list"><button id="playNextAction">▶ Reproducir siguiente</button><button id="queueAction">☷ Agregar a la cola</button><button id="offlineAction">⇩ Guardar offline</button><button id="favoriteAction">♥ Favorito</button><button id="playlistAction">＋ Añadir a playlist</button><button id="editAction" class="hidden" data-admin-only>✎ Editar metadata</button><button id="deleteAction" class="danger-text hidden" data-admin-only>Enviar a papelera</button></div></div></dialog>
+
+  <dialog id="profileDialog"><div class="profile-panel"><div class="dialog-head"><div><p class="eyebrow">TU PERFIL</p><h2>Personaliza GMusic</h2></div><button type="button" class="icon-btn" data-close="profileDialog">✕</button></div><p class="muted">Tu perfil, favoritos, historial, playlists, cola y estadísticas son privados para tu usuario.</p><label>¿Cómo quieres que te llamemos?<input id="profileNameInput" maxlength="40" placeholder="Tu nombre" /></label><label>Identidad (opcional)<select id="profileGender"><option value="prefer_not">Prefiero no decirlo</option><option value="male">Hombre</option><option value="female">Mujer</option><option value="other">Otra / personalizada</option></select></label><label>Modo de apariencia<select id="profileAppearance"><option value="auto">Automático según el sistema</option><option value="dark">Oscuro</option><option value="light">Claro</option></select></label><label>Color de acento<select id="profileTheme"><option value="emerald">Verde</option><option value="ocean">Azul / cian</option><option value="berry">Rosa</option><option value="midnight">Azul noche</option><option value="violet">Morado</option><option value="orange">Naranja</option><option value="red">Rojo</option></select></label><small class="muted">La identidad solo sirve para sugerir un color inicial; cualquier usuario puede elegir cualquier tema.</small><p id="profileStatus" class="status-line" data-type="neutral"></p><div class="dialog-actions"><button type="button" class="ghost" id="profileOfflineBtn">⬇ Centro offline</button><button type="button" class="primary" id="saveProfileBtn">Guardar perfil</button></div></div></dialog>
+
+  <dialog id="playlistDialog"><div class="playlist-panel"><div class="dialog-head"><div><p class="eyebrow">PLAYLISTS</p><h2 id="playlistDialogTitle">Añadir a playlist</h2></div><button type="button" class="icon-btn" data-close="playlistDialog">✕</button></div><div id="playlistChoices" class="playlist-choices"></div><div class="new-playlist-row"><input id="newPlaylistName" maxlength="50" placeholder="Nueva playlist"/><button type="button" id="createPlaylistBtn" class="primary">Crear</button></div></div></dialog>
+
+  <dialog id="offlineDialog"><div class="offline-panel"><div class="dialog-head"><div><p class="eyebrow">SIN CONEXIÓN</p><h2>Centro offline</h2></div><button type="button" class="icon-btn" data-close="offlineDialog">✕</button></div><div id="offlineSummary"></div><div class="offline-settings"><label class="toggle-row"><input id="offlineAutoFavorites" type="checkbox"/><span><b>Mantener mis Favoritos disponibles offline</b><small>Los nuevos favoritos se descargan automáticamente cuando sea posible.</small></span></label><label class="toggle-row"><input id="offlineMirrorFavorites" type="checkbox"/><span><b>Mantener offline exactamente igual que Favoritos</b><small>Si quitas un favorito, también se elimina su copia offline.</small></span></label><label class="toggle-row"><input id="offlineWifiOnly" type="checkbox"/><span><b>Descargar solo con Wi‑Fi cuando el navegador pueda detectarlo</b><small>Si el navegador no puede distinguir Wi‑Fi/datos, GMusic no inventará el estado de red.</small></span></label><label>Límite de almacenamiento<select id="offlineLimit"><option value="524288000">500 MB</option><option value="1073741824">1 GB</option><option value="2147483648">2 GB</option></select></label></div><p id="offlineProgress" class="status-line"></p><div class="dialog-actions offline-actions"><button type="button" id="offlineDownloadFavorites" class="primary">⇩ Descargar favoritos</button><button type="button" id="offlinePauseBtn" class="ghost hidden">⏸ Pausar</button><button type="button" id="offlineCancelBtn" class="ghost hidden">Cancelar</button><button type="button" id="offlineRetryBtn" class="ghost hidden">Reintentar fallidas</button><button type="button" id="offlineDeleteAllBtn" class="danger-text">Eliminar descargas</button></div><h3>Descargas pendientes o fallidas</h3><div id="offlineFailedList" class="admin-list"><p class="muted">No hay descargas fallidas.</p></div></div></dialog>
+
+  <dialog id="youtubeDialog"><div class="youtube-panel"><div class="dialog-head"><div><p class="eyebrow">CONTENIDO DE YOUTUBE</p><h2 id="ytDialogTitle">YouTube</h2><p id="ytDialogChannel" class="muted"></p></div><button type="button" class="icon-btn" data-close="youtubeDialog">✕</button></div><div class="youtube-player-frame"><div id="youtubePlayerMount"></div></div><div class="youtube-policy-note"><span>▶</span><p>La reproducción se realiza mediante el reproductor oficial de YouTube. GMusic no descarga, extrae ni guarda el audio. El video se pausa si sales de GMusic o bloqueas la pantalla. Si escuchas 30 segundos o más, GMusic registra esa escucha en tu cuenta según el consentimiento mostrado al iniciar esta función.</p></div><div class="dialog-actions"><a id="ytOpenLink" class="ghost" href="https://www.youtube.com/" target="_blank" rel="noopener">Abrir en YouTube ↗</a><button type="button" class="primary" data-close="youtubeDialog">Volver a GMusic</button></div></div></dialog>
+
+  <dialog id="editTrackDialog"><div class="edit-track-panel"><div class="dialog-head"><div><p class="eyebrow">BIBLIOTECA</p><h2>Editar canción</h2></div><button type="button" class="icon-btn" data-close="editTrackDialog">✕</button></div><div class="form-grid"><label>Título<input id="editTitle" maxlength="160" /></label><label>Artista<input id="editArtist" maxlength="160" /></label><label>Álbum<input id="editAlbum" maxlength="160" /></label><label>Año<input id="editYear" maxlength="8" inputmode="numeric" /></label><label>Género<input id="editGenre" maxlength="80" /></label><label>N.º de pista<input id="editTrackNumber" maxlength="12" /></label></div><p id="editTrackStatus" class="status-line"></p><div class="dialog-actions"><button type="button" class="primary" id="saveTrackMetadataBtn">Guardar cambios</button></div></div></dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="/app.js?v=21-legacy-advance"></script>
+</body>
+</html>

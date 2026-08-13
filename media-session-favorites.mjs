@@ -1,0 +1,12 @@
+import fs from "node:fs";
+import assert from "node:assert/strict";
+const src=fs.readFileSync(new URL("../public/app.js",import.meta.url),"utf8");
+assert.match(src,/setActionHandler\(action,null\)/,"seek handlers should be explicitly cleared");
+assert.match(src,/previoustrack:\(\)=>previousTrack\(true\)/,"Media Session previous must change track");
+assert.match(src,/nexttrack:\(\)=>nextTrack\(false,\{systemAction:true\}\)/,"Media Session next must use the prepared system-action path");
+assert.match(src,/seekbackward:/,"Media Session should support backward seek on Android");
+assert.match(src,/seekforward:/,"Media Session should support forward seek on Android");
+assert.match(src,/seekto:/,"Media Session should support absolute seek on Android");
+assert.match(src,/async function downloadFavoritesOffline\(\)/,"Favorites offline batch action must exist");
+assert.match(src,/favoriteTracks\(\)\.filter/,"Favorites offline download must be scoped to current user's favorites");
+console.log("Media Session + favoritos offline: OK");

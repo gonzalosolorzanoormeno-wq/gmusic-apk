@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const app = fs.readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+const worker = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+const sw = fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+assert.match(app, /restoreOfflineSession\(\)/, 'Debe existir restauración de sesión offline');
+assert.match(app, /loadOfflineLibrary\(\)/, 'Debe existir carga de biblioteca offline');
+assert.match(app, /gmusic_offline_session_v3/, 'Debe persistirse una sesión offline local');
+assert.match(app, /gmusic-offline-audio-v3-/, 'El audio offline debe aislarse por ámbito de usuario');
+assert.match(app, /Esta canción no está guardada para usar sin conexión/, 'Una pista no descargada debe fallar de forma clara offline');
+assert.doesNotMatch(app, /state\.authenticated = state\.onlineApi \? await verifySessionToken\(\) : false/, 'No debe expulsar al usuario solo por estar offline');
+assert.match(worker, /offline_scope/, 'La sesión online debe entregar un ámbito opaco para aislar almacenamiento offline');
+assert.match(worker, /No hacemos una consulta redundante a Drive aquí/, 'play-url debe evitar la consulta redundante a Drive');
+assert.match(worker, /libraryFolderCache/, 'Debe existir caché temporal de la carpeta de biblioteca');
+assert.match(sw, /const VERSION = "3\.5\.6"/, 'Service Worker debe estar versionado para forzar actualización');
+console.log('✓ Offline startup + playback latency checks OK');

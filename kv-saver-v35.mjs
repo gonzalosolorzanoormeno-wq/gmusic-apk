@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const backend=fs.readFileSync('src/index.js','utf8');
+const app=fs.readFileSync('public/app.js','utf8');
+const putStart=backend.indexOf('async function putUserData');
+const putEnd=backend.indexOf('function sanitizeUserData',putStart);
+const putBlock=backend.slice(putStart,putEnd);
+assert.match(putBlock,/current === serialized/);
+assert.doesNotMatch(putBlock,/touchAccountActivity/);
+assert.match(app,/600000/);
+assert.doesNotMatch(app,/syncQueueRemote\(\).*updated_at/);
+const ytStart=backend.indexOf('async function logYouTubeListen');
+const ytEnd=backend.indexOf('async function listAdminYouTubeListens',ytStart);
+const ytBlock=backend.slice(ytStart,ytEnd);
+assert.match(backend,/function youtubeDayKey\(user,date\)\{return `ytlisten:/);
+assert.doesNotMatch(ytBlock,/logAudit/);
+assert.match(ytBlock,/expirationTtl:14\*24\*60\*60/);
+console.log('kv saver v3.5: OK');
