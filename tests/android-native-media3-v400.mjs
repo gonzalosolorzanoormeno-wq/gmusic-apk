@@ -24,7 +24,8 @@ const checks = [
   [deps.includes('media3-session'), 'Gradle debe incluir media3-session'],
   [deps.includes('1.10.1'), 'Media3 debe usar la versión estable fijada'],
   [index.includes('native-audio-bridge.js'), 'index debe cargar el bridge antes de app.js'],
-  [workflow.includes('com.android.tools.build:gradle:8.6.1'), 'workflow debe usar AGP compatible con API 35'],
+  [workflow.includes('com.android.tools.build:gradle:8.10.1'), 'workflow debe usar AGP compatible con API 36'],
+  [workflow.includes('compileSdkVersion = 36'), 'workflow debe compilar contra API 36 para Media3 1.10.1'],
   [workflow.includes('minSdkVersion = 23'), 'workflow debe subir minSdk a 23 para Media3 actual'],
   [workflow.includes('GMusic-v4.0-native.apk'), 'workflow debe generar el APK nativo v4'],
 ];
