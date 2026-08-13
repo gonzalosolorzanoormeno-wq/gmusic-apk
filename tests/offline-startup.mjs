@@ -12,5 +12,5 @@ assert.doesNotMatch(app, /state\.authenticated = state\.onlineApi \? await verif
 assert.match(worker, /offline_scope/, 'La sesión online debe entregar un ámbito opaco para aislar almacenamiento offline');
 assert.match(worker, /No hacemos una consulta redundante a Drive aquí/, 'play-url debe evitar la consulta redundante a Drive');
 assert.match(worker, /libraryFolderCache/, 'Debe existir caché temporal de la carpeta de biblioteca');
-assert.match(sw, /const VERSION = "3\.5\.6"/, 'Service Worker debe estar versionado para forzar actualización');
+assert.match(sw, /const VERSION = "4\.0\.0"/, 'Service Worker debe estar versionado para forzar actualización');
 console.log('✓ Offline startup + playback latency checks OK');

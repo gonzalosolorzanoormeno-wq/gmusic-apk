@@ -1,6 +1,6 @@
 import { chooseDjTrack, primaryDjArtist } from "./dj-engine.js";
 
-const VERSION = "3.5.6";
+const VERSION = "4.0.0";
 const IS_ANDROID = /Android/i.test(navigator.userAgent || "");
 const LEGACY_SESSION_KEY = "gmusic_session_v1";
 const QUEUE_KEY = "gmusic_queue_v2";
@@ -83,6 +83,7 @@ const state = {
   preparedNextSeq: 0,
   preparingNext: null,
   playbackToken: 0,
+  nativeQueueResyncTimer: null,
   needsRenderAfterBackgroundAdvance: false,
   adminLoaded: { users:false, status:false, trash:false, audit:false, requests:false, playlists:false, artists:false, youtube:false },
   dj: { active:false, mode:"taste", lastIds:[], history:[], suppressHistoryOnce:false, feedback:{} }
@@ -94,7 +95,60 @@ const artworkMissUntil = new Map();
 const ARTWORK_MISS_RETRY_MS = 90 * 1000;
 
 const el = (id) => document.getElementById(id);
-const audio = el("audio");
+const htmlAudio = el("audio");
+const isNativeAndroid = Boolean(window.GMusicNativeAudio?.isAvailable?.());
+const NATIVE_API_ORIGIN = "https://gmusic-player.gmusic-cloud-25.workers.dev";
+
+function createAudioFacade(node) {
+  if (!isNativeAndroid) return node;
+  const native = window.GMusicNativeAudio;
+  const handlers = new Map();
+  const st = { currentTime:0, duration:0, paused:true, volume:Number(node?.volume||0.85), playbackRate:1, readyState:0, src:"" };
+  const emit = (name) => {
+    for (const item of [...(handlers.get(name) || [])]) {
+      try { item.cb({ type:name, target:facade }); } catch {}
+      if (item.once) handlers.get(name)?.delete(item);
+    }
+  };
+  const facade = {
+    get src(){ return st.src; },
+    set src(value){ st.src=String(value||""); },
+    get currentTime(){ return st.currentTime; },
+    set currentTime(value){ st.currentTime=Math.max(0,Number(value)||0); native.seekTo(st.currentTime*1000).catch(()=>{}); },
+    get duration(){ return st.duration; },
+    get paused(){ return st.paused; },
+    get volume(){ return st.volume; },
+    set volume(value){ st.volume=Math.max(0,Math.min(1,Number(value)||0)); native.setVolume(st.volume).catch(()=>{}); },
+    get playbackRate(){ return st.playbackRate; },
+    get readyState(){ return st.readyState; },
+    addEventListener(name,cb,options){ if(!handlers.has(name))handlers.set(name,new Set());handlers.get(name).add({cb,once:Boolean(options?.once)}); },
+    removeEventListener(name,cb){ for(const item of handlers.get(name)||[])if(item.cb===cb)handlers.get(name).delete(item); },
+    async play(){ await native.resume(); },
+    async pause(){ await native.pause(); },
+    async load(){ return; },
+    removeAttribute(name){ if(name==="src"){ st.src="";st.currentTime=0;st.duration=0;st.readyState=0;native.stop().catch(()=>{}); } },
+    _sync(data){
+      const wasPaused=st.paused;
+      const firstMetadata=st.readyState<1 && Number(data?.durationMs||0)>0;
+      st.paused=!Boolean(data?.isPlaying);
+      st.currentTime=Math.max(0,Number(data?.positionMs||0)/1000);
+      st.duration=Math.max(0,Number(data?.durationMs||0)/1000);
+      if(st.duration>0)st.readyState=4;
+      if(firstMetadata)emit("loadedmetadata");
+      emit("timeupdate");
+      if(wasPaused!==st.paused){emit(st.paused?"pause":"play");if(!st.paused)emit("playing");}
+    },
+    _queueEnded(){ st.paused=true;emit("pause");emit("ended"); },
+    _error(){ emit("error"); }
+  };
+  native.onPlaybackStateChanged(data=>facade._sync(data));
+  native.onTrackChanged(data=>handleNativeTrackChanged(data));
+  native.onQueueEnded(()=>facade._queueEnded());
+  native.onError(data=>{console.warn("[GMusic native]",data?.message||"Error de reproducción");facade._error();});
+  return facade;
+}
+
+const audio = createAudioFacade(htmlAudio);
 const trackList = el("trackList");
 const emptyState = el("emptyState");
 const collectionGrid = el("collectionGrid");
@@ -123,6 +177,7 @@ async function boot() {
   audio.volume = Number(el("volume").value);
   el("versionLabel").textContent = `v${VERSION}`;
   setupMediaSession();
+  await restoreNativeSecureSession();
   await checkApi();
   await checkSession();
   if (state.authenticated) {
@@ -137,6 +192,7 @@ async function boot() {
     }
   }
   render();
+  await syncNativeUiFromPlayer();
   registerServiceWorker();
 }
 
@@ -234,6 +290,7 @@ function bindEvents() {
       pauseYouTubePlayback("background");
     } else {
       if(state.needsRenderAfterBackgroundAdvance){state.needsRenderAfterBackgroundAdvance=false;render();}
+      if(isNativeAndroid)syncNativeUiFromPlayer();
       hydrateArtwork();
     }
   });
@@ -274,6 +331,7 @@ async function login() {
     const response = await fetch("/api/session", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", cache: "no-store", body: JSON.stringify({ access_key: accessKey }) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) return setAccessStatus(data.error || "No se pudo iniciar sesión.", "error");
+    state.sessionToken = String(data.session_token || "");
     localStorage.removeItem(LEGACY_SESSION_KEY); el("accessInput").value = "";
     if (!await verifySessionToken()) return setAccessStatus("No se pudo validar la sesión.", "error");
     state.authenticated = true; state.offlineMode = false; persistOfflineSession(); applyRoleUI(); updateConnectionBadge();
@@ -285,6 +343,9 @@ async function login() {
 
 async function logout() {
   await apiFetch("/api/session", { method: "DELETE" }).catch(() => {});
+  await window.GMusicNativeAudio?.stop?.().catch(()=>{});
+  await window.GMusicNativeAudio?.setSessionToken?.("").catch(()=>{});
+  await window.GMusicSecureSession?.clear?.().catch(()=>{});
   clearLocalSession(); state.authenticated = false; state.tracks = []; state.currentId = null; state.contextIds = []; state.manualQueue = []; state.canManage = false; state.userName = ""; state.profile = null; state.playlists = []; state.serverHistory = []; state.serverStats = {}; state.favoriteIds = new Set(); state.musicRequests=[]; state.playlistAnalyses=[]; state.requestsLoaded=false; state.spotifyStatus=null; state.youtubeResults=[]; state.youtubeCurrent=null; state.adminYouTubeListens=null; state.dj={active:false,mode:"taste",lastIds:[],history:[],suppressHistoryOnce:false,feedback:{}}; state.activePlaybackSource="none"; pauseYouTubePlayback("logout"); localStorage.removeItem(QUEUE_KEY); applyRoleUI(); closeNowPlaying(); audio.pause(); audio.removeAttribute("src"); audio.load(); accessDialog.close(); render();
 }
 
@@ -298,6 +359,20 @@ function clearLocalSession() {
 function persistOfflineSession() {
   if (!state.authenticated || !state.offlineScope) return;
   localStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify({ scope: state.offlineScope, name: state.userName || "", saved_at: Date.now() }));
+  if(isNativeAndroid && state.sessionToken){
+    window.GMusicSecureSession?.save?.({token:state.sessionToken,scope:state.offlineScope,name:state.userName||""}).catch(()=>{});
+    window.GMusicNativeAudio?.setSessionToken?.(state.sessionToken).catch(()=>{});
+  }
+}
+async function restoreNativeSecureSession(){
+  if(!isNativeAndroid || !window.GMusicSecureSession?.isAvailable?.())return;
+  try{
+    const saved=await window.GMusicSecureSession.get();
+    if(!saved?.exists||!saved.token)return;
+    state.sessionToken=String(saved.token||"");
+    if(saved.scope)localStorage.setItem(OFFLINE_SESSION_KEY,JSON.stringify({scope:String(saved.scope),name:String(saved.name||""),saved_at:Date.now()}));
+    await window.GMusicNativeAudio?.setSessionToken?.(state.sessionToken).catch(()=>{});
+  }catch{}
 }
 function restoreOfflineSession() {
   const saved = safeJson(localStorage.getItem(OFFLINE_SESSION_KEY), null);
@@ -323,7 +398,10 @@ async function checkSession() {
   if (state.onlineApi) {
     state.authenticated = await verifySessionToken();
     if (state.authenticated) persistOfflineSession();
-    else clearLocalSession();
+    else {
+      clearLocalSession();
+      if(isNativeAndroid){await window.GMusicNativeAudio?.setSessionToken?.("").catch(()=>{});await window.GMusicSecureSession?.clear?.().catch(()=>{});}
+    }
   } else {
     state.authenticated = restoreOfflineSession();
   }
@@ -551,8 +629,100 @@ function groupBy(items, keyFn) { const m = new Map(); for (const x of items) { c
 function trackById(id) { return state.tracks.find((t) => t.id === id); }
 
 async function playInContext(contextIds, id) {
-  state.contextIds = [...contextIds]; state.queueCursor = state.contextIds.indexOf(id); state.currentId = id; state.playCountMarked = false; saveQueue();
+  state.contextIds = [...contextIds]; state.queueCursor = state.contextIds.indexOf(id); state.currentId = id; state.playCountMarked = false; saveQueue({syncNative:false});
   await playTrack(id);
+}
+
+function shuffledNativeIds(ids){
+  const out=[...ids];
+  for(let i=out.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[out[i],out[j]]=[out[j],out[i]];}
+  return out;
+}
+function buildNativeDjTail(currentId,count=30){
+  const result=[];
+  const used=new Set([currentId,...state.manualQueue]);
+  let simulatedCurrent=currentId;
+  let simulatedLast=[...state.dj.lastIds];
+  for(let i=0;i<count;i++){
+    const pool=state.tracks.filter(t=>t?.id&&!used.has(t.id));
+    if(!pool.length)break;
+    const recentArtists=simulatedLast.map(id=>primaryDjArtist(trackById(id))).filter(Boolean).slice(0,6);
+    const next=chooseDjTrack(pool,{currentId:simulatedCurrent,mode:state.dj.mode,stats:state.stats,favoriteIds:state.favoriteIds,recentIds:state.recentIds,recentArtists,djLastIds:simulatedLast,feedback:state.dj.feedback});
+    if(!next?.id)break;
+    result.push(next.id);used.add(next.id);simulatedCurrent=next.id;simulatedLast=[next.id,...simulatedLast.filter(x=>x!==next.id)].slice(0,12);
+  }
+  return result;
+}
+function buildNativeQueueLayout(startId){
+  const valid=(id)=>Boolean(id&&trackById(id));
+  const manual=[];const manualSeen=new Set();
+  for(const id of state.manualQueue){if(valid(id)&&id!==startId&&!manualSeen.has(id)){manual.push(id);manualSeen.add(id);}}
+  if(state.dj.active){
+    const before=(state.dj.history||[]).filter(valid).filter(id=>id!==startId).slice(-8);
+    const tail=buildNativeDjTail(startId,30);
+    const ids=[...before,startId,...manual,...tail.filter(id=>!manualSeen.has(id))].filter(valid);
+    return {ids,startIndex:Math.max(0,before.length)};
+  }
+  const context=(state.contextIds.length?state.contextIds:state.tracks.map(t=>t.id)).filter(valid);
+  const currentIndex=context.indexOf(startId);
+  const before=currentIndex>0?context.slice(0,currentIndex):[];
+  let after=currentIndex>=0?context.slice(currentIndex+1):context.filter(id=>id!==startId);
+  after=after.filter(id=>!manualSeen.has(id)&&id!==startId);
+  if(state.shuffle)after=shuffledNativeIds(after);
+  const ids=[...before,startId,...manual,...after].filter(valid);
+  return {ids,startIndex:Math.max(0,before.length)};
+}
+function nativeQueueItem(id){
+  const track=trackById(id);if(!track)return null;
+  const artwork=getTrackArtwork(track)||"/icon.svg";
+  return {
+    trackId:track.id,
+    url:new URL(`/api/tracks/${encodeURIComponent(track.id)}/stream`,NATIVE_API_ORIGIN).href,
+    title:track.title||"",artist:track.artist||"",album:track.album||"",
+    artworkUrl:new URL(artwork,NATIVE_API_ORIGIN).href
+  };
+}
+async function syncNativeQueue({startId=state.currentId,positionMs=0,autoplay=true}={}){
+  if(!isNativeAndroid||!startId)return false;
+  clearTimeout(state.nativeQueueResyncTimer);state.nativeQueueResyncTimer=null;
+  if(!state.sessionToken)await restoreNativeSecureSession();
+  if(!state.sessionToken)throw new Error("Vuelve a iniciar sesión una vez para activar el reproductor nativo.");
+  const layout=buildNativeQueueLayout(startId);
+  const items=layout.ids.map(nativeQueueItem).filter(Boolean);
+  if(!items.length)throw new Error("No hay canciones disponibles para la cola nativa.");
+  await window.GMusicNativeAudio.setSessionToken(state.sessionToken);
+  await window.GMusicNativeAudio.setQueue({items,startIndex:Math.min(layout.startIndex,items.length-1),positionMs,repeatMode:state.repeat,autoplay});
+  return true;
+}
+function scheduleNativeQueueResync(delay=180){
+  if(!isNativeAndroid||!state.currentId)return;
+  clearTimeout(state.nativeQueueResyncTimer);
+  state.nativeQueueResyncTimer=setTimeout(async()=>{
+    state.nativeQueueResyncTimer=null;
+    try{const ns=await window.GMusicNativeAudio.getState();await syncNativeQueue({startId:String(ns?.trackId||state.currentId),positionMs:Number(ns?.positionMs||0),autoplay:Boolean(ns?.isPlaying)});}catch{}
+  },delay);
+}
+async function syncNativeUiFromPlayer(){
+  if(!isNativeAndroid)return;
+  try{const ns=await window.GMusicNativeAudio.getState();handleNativeTrackChanged(ns);audio._sync?.(ns);}catch{}
+}
+function handleNativeTrackChanged(data){
+  if(!isNativeAndroid)return;
+  const id=String(data?.trackId||"");const track=trackById(id);if(!track)return;
+  if(state.currentId!==id){
+    state.currentId=id;state.queueCursor=state.contextIds.indexOf(id);state.playCountMarked=false;
+    state.manualQueue=state.manualQueue.filter(x=>x!==id);
+    rememberDjTrack(id);
+    saveQueue({syncNative:false});
+    applyCurrentTrackPresentation(track,{renderUi:!document.hidden,openSheet:false});
+    if(!document.hidden){renderQueue();updateQueueCount();}
+  }
+}
+async function playTrackNative(id,track){
+  clearPreparedNext();revokeCurrentObjectUrl();state.currentId=id;
+  applyCurrentTrackPresentation(track,{renderUi:!document.hidden,openSheet:!document.hidden});
+  try{await syncNativeQueue({startId:id,positionMs:0,autoplay:true});return true;}
+  catch(error){if(!document.hidden)toast(error?.message||"No se pudo iniciar el reproductor nativo.");return false;}
 }
 
 async function playTrack(id,{prepared=null}={}) {
@@ -563,6 +733,7 @@ async function playTrack(id,{prepared=null}={}) {
   setupLibraryMediaSessionHandlers();
   if (el("youtubeDialog")?.open) el("youtubeDialog").close();
   rememberDjTrack(id);
+  if(isNativeAndroid)return playTrackNative(id,track);
 
   // A prepared entry is only an already-resolved source. It never starts playback by itself
   // and never replaces the currently playing source before ended/Next.
@@ -722,6 +893,7 @@ async function resumeAudio() { try { await audio.play(); el("audioGate").classLi
 
 async function nextTrack(fromEnded,{systemAction=false}={}) {
   if (!state.currentId) return;
+  if(isNativeAndroid){await window.GMusicNativeAudio.next().catch(()=>{});return;}
   if (fromEnded && state.repeat === "one") {
     state.playCountMarked=false;
     audio.currentTime=0;
@@ -764,6 +936,7 @@ async function nextTrack(fromEnded,{systemAction=false}={}) {
 
 async function previousTrack(forceTrackChange=false) {
   if (!forceTrackChange && audio.currentTime > 5) { audio.currentTime = 0; updateMediaPosition(); return; }
+  if(isNativeAndroid){await window.GMusicNativeAudio.previous().catch(()=>{});return;}
   if(state.dj.active && state.dj.history.length>1){
     state.dj.history.pop(); const prev=state.dj.history.at(-1); if(prev){state.dj.suppressHistoryOnce=true;state.currentId=prev;state.queueCursor=state.contextIds.indexOf(prev);saveQueue();await playTrack(prev);return;}
   }
@@ -783,7 +956,7 @@ function renderQueue() {
   el("queueList").querySelectorAll("[data-qremove]").forEach(b=>b.addEventListener("click",()=>{state.manualQueue.splice(Number(b.dataset.qremove),1);saveQueue();renderQueue();updateQueueCount();}));
 }
 function moveManual(i,d){const j=i+d;if(j<0||j>=state.manualQueue.length)return;[state.manualQueue[i],state.manualQueue[j]]=[state.manualQueue[j],state.manualQueue[i]];saveQueue();renderQueue();}
-function saveQueue(){localStorage.setItem(QUEUE_KEY,JSON.stringify({contextIds:state.contextIds,manualQueue:state.manualQueue,currentId:state.currentId,shuffle:state.shuffle,repeat:state.repeat}));syncQueueRemote();}
+function saveQueue({syncNative=true}={}){localStorage.setItem(QUEUE_KEY,JSON.stringify({contextIds:state.contextIds,manualQueue:state.manualQueue,currentId:state.currentId,shuffle:state.shuffle,repeat:state.repeat}));syncQueueRemote();if(syncNative)scheduleNativeQueueResync();}
 function restoreQueue(){const q=safeJson(localStorage.getItem(QUEUE_KEY),{});state.contextIds=q.contextIds||[];state.manualQueue=q.manualQueue||[];state.currentId=q.currentId||null;state.shuffle=Boolean(q.shuffle);state.repeat=["off","all","one"].includes(q.repeat)?q.repeat:"off";}
 function updateQueueCount(){
   const count = String(state.manualQueue.length);
@@ -792,7 +965,7 @@ function updateQueueCount(){
 }
 function toggleShuffle(){state.shuffle=!state.shuffle;saveQueue();syncPlayerButtons();toast(state.shuffle?"Aleatorio activado":"Aleatorio desactivado");}
 function cycleRepeat(){state.repeat=state.repeat==="off"?"all":state.repeat==="all"?"one":"off";saveQueue();syncPlayerButtons();}
-function syncPlayerButtons(){el("playBtn").textContent=audio.paused?"▶":"❚❚";el("npPlayBtn").textContent=audio.paused?"▶":"❚❚";el("playerBar").classList.toggle("is-playing",!audio.paused && !!state.currentId);if("mediaSession"in navigator&&state.activePlaybackSource==="library"){try{navigator.mediaSession.playbackState=audio.paused?"paused":"playing"}catch{}}el("shuffleBtn").classList.toggle("active",state.shuffle);el("shuffleMiniBtn").classList.toggle("active",state.shuffle);el("npShuffleBtn").classList.toggle("active",state.shuffle);const label=state.repeat==="off"?"↻ Off":state.repeat==="all"?"↻ Todo":"↻ 1";el("repeatBtn").textContent=label;el("repeatMiniBtn").textContent=state.repeat==="one"?"↻¹":"↻";el("repeatMiniBtn").classList.toggle("active",state.repeat!=="off");el("npRepeatBtn").textContent=state.repeat==="one"?"↻¹":"↻";el("npRepeatBtn").classList.toggle("active",state.repeat!=="off");const currentFav=!!(state.currentId&&isFavorite(state.currentId));el("nowFavBtn").classList.toggle("on",currentFav);el("npFavBtn").classList.toggle("on",currentFav);}
+function syncPlayerButtons(){el("playBtn").textContent=audio.paused?"▶":"❚❚";el("npPlayBtn").textContent=audio.paused?"▶":"❚❚";el("playerBar").classList.toggle("is-playing",!audio.paused && !!state.currentId);if(!isNativeAndroid&&"mediaSession"in navigator&&state.activePlaybackSource==="library"){try{navigator.mediaSession.playbackState=audio.paused?"paused":"playing"}catch{}}el("shuffleBtn").classList.toggle("active",state.shuffle);el("shuffleMiniBtn").classList.toggle("active",state.shuffle);el("npShuffleBtn").classList.toggle("active",state.shuffle);const label=state.repeat==="off"?"↻ Off":state.repeat==="all"?"↻ Todo":"↻ 1";el("repeatBtn").textContent=label;el("repeatMiniBtn").textContent=state.repeat==="one"?"↻¹":"↻";el("repeatMiniBtn").classList.toggle("active",state.repeat!=="off");el("npRepeatBtn").textContent=state.repeat==="one"?"↻¹":"↻";el("npRepeatBtn").classList.toggle("active",state.repeat!=="off");const currentFav=!!(state.currentId&&isFavorite(state.currentId));el("nowFavBtn").classList.toggle("on",currentFav);el("npFavBtn").classList.toggle("on",currentFav);}
 
 function openActions(id){state.actionTrackId=id;const t=trackById(id);if(!t)return;el("actionTrackTitle").textContent=t.title;el("offlineAction").textContent=state.offlineIds.has(id)?"✕ Quitar offline":"⇩ Guardar offline";el("favoriteAction").textContent=isFavorite(id)?"♡ Quitar favorito":"♥ Favorito";actionDialog.showModal();}
 function actionQueue(kind){const id=state.actionTrackId;if(!id)return;kind==="next"?playNextQueued(id):enqueue(id);actionDialog.close();}
@@ -947,6 +1120,7 @@ function clearMediaSessionHandlers(){
   try{navigator.mediaSession.playbackState="none";}catch{}
 }
 function setupLibraryMediaSessionHandlers(){
+  if(isNativeAndroid)return;
   if(!("mediaSession"in navigator))return;
   const handlers={
     play:()=>{state.activePlaybackSource="library";audio.play().catch(()=>{});},
@@ -967,11 +1141,12 @@ function setupYouTubeMediaSession(video){
   try{navigator.mediaSession.metadata=new MediaMetadata({title:video?.title||"YouTube",artist:video?.channel||"YouTube",album:"YouTube",artwork:video?.thumbnail?[{src:video.thumbnail}]:[]});navigator.mediaSession.playbackState="playing";}catch{}
 }
 function setupMediaSession(){
+  if(isNativeAndroid)return;
   if(!("mediaSession"in navigator))return;
   setupLibraryMediaSessionHandlers();
 }
-function updateMediaSession(track, artwork){if(!("mediaSession"in navigator)||state.activePlaybackSource!=="library")return;try{navigator.mediaSession.metadata=new MediaMetadata({title:track.title,artist:track.artist,album:track.album,artwork:[{src:new URL(artwork,location.href).href,sizes:"512x512"}]});navigator.mediaSession.playbackState=audio.paused?"paused":"playing";}catch{}}
-function updateMediaPosition(){if(!("mediaSession"in navigator)||state.activePlaybackSource!=="library"||!Number.isFinite(audio.duration)||audio.duration<=0)return;try{navigator.mediaSession.setPositionState({duration:audio.duration,playbackRate:audio.playbackRate,position:Math.min(audio.currentTime,audio.duration)});}catch{}}
+function updateMediaSession(track, artwork){if(isNativeAndroid||!("mediaSession"in navigator)||state.activePlaybackSource!=="library")return;try{navigator.mediaSession.metadata=new MediaMetadata({title:track.title,artist:track.artist,album:track.album,artwork:[{src:new URL(artwork,location.href).href,sizes:"512x512"}]});navigator.mediaSession.playbackState=audio.paused?"paused":"playing";}catch{}}
+function updateMediaPosition(){if(isNativeAndroid||!("mediaSession"in navigator)||state.activePlaybackSource!=="library"||!Number.isFinite(audio.duration)||audio.duration<=0)return;try{navigator.mediaSession.setPositionState({duration:audio.duration,playbackRate:audio.playbackRate,position:Math.min(audio.currentTime,audio.duration)});}catch{}}
 
 function isUnknownAlbum(value){
   const v=normalize(value);
@@ -1136,7 +1311,7 @@ function saveDjFeedback(){localStorage.setItem(djPrefsKey(),JSON.stringify(state
 function djModeLabel(mode){return ({taste:"Mis gustos",favorites:"Favoritos",energy:"Energía",chill:"Chill",discovery:"Descubrimiento",surprise:"Sorpréndeme"})[mode]||"Mis gustos";}
 function chooseNextDjTrack(){const recentArtists=state.dj.lastIds.map(id=>primaryDjArtist(trackById(id))).filter(Boolean).slice(0,6);return chooseDjTrack(state.tracks,{currentId:state.currentId,mode:state.dj.mode,stats:state.stats,favoriteIds:state.favoriteIds,recentIds:state.recentIds,recentArtists,djLastIds:state.dj.lastIds,feedback:state.dj.feedback});}
 async function startDj(mode="taste"){if(!state.tracks.length)return toast("La biblioteca está vacía.");if(mode==="favorites"&&!state.favoriteIds.size)return toast("Aún no tienes canciones favoritas para este modo.");loadDjFeedback();state.dj.active=true;state.dj.mode=mode;state.dj.lastIds=[];state.dj.history=[];state.dj.suppressHistoryOnce=false;const next=chooseNextDjTrack();if(!next){state.dj.active=false;return toast("No encontramos una canción para este modo.");}toast(`DJ activado · ${djModeLabel(mode)}`);await playInContext(state.tracks.map(t=>t.id),next.id);renderDiscover();}
-function stopDj(){state.dj.active=false;state.dj.lastIds=[];state.dj.history=[];state.dj.suppressHistoryOnce=false;toast("DJ desactivado");renderDiscover();}
+function stopDj(){state.dj.active=false;state.dj.lastIds=[];state.dj.history=[];state.dj.suppressHistoryOnce=false;scheduleNativeQueueResync();toast("DJ desactivado");renderDiscover();}
 function adjustDjFeedback(kind){const t=trackById(state.currentId);if(!t)return toast("Primero reproduce una canción de tu biblioteca.");loadDjFeedback();const artist=primaryDjArtist(t);const genre=normalize(t.genre||"");state.dj.feedback.artistWeights=state.dj.feedback.artistWeights||{};state.dj.feedback.genreWeights=state.dj.feedback.genreWeights||{};if(kind==="more"){state.dj.feedback.artistWeights[artist]=(Number(state.dj.feedback.artistWeights[artist]||0)+1);if(genre)state.dj.feedback.genreWeights[genre]=Number(state.dj.feedback.genreWeights[genre]||0)+1;toast("El DJ tendrá más en cuenta este estilo");}if(kind==="less"){state.dj.feedback.artistWeights[artist]=(Number(state.dj.feedback.artistWeights[artist]||0)-1);if(genre)state.dj.feedback.genreWeights[genre]=Number(state.dj.feedback.genreWeights[genre]||0)-1;toast("El DJ reducirá este estilo");}if(kind==="energy"){state.dj.mode="energy";toast("DJ: subiendo energía");}if(kind==="chill"){state.dj.mode="chill";toast("DJ: más tranquilo");}if(kind==="surprise"){state.dj.mode="surprise";toast("DJ: modo sorpresa");}saveDjFeedback();renderDiscover();}
 function renderDiscover(){trackList.classList.add("hidden");trackListHeader.classList.add("hidden");emptyState.classList.add("hidden");collectionGrid.classList.remove("hidden");el("trackCount").textContent=state.dj.active?`DJ · ${djModeLabel(state.dj.mode)}`:"YouTube + DJ";const results=state.youtubeResults||[];const current=trackById(state.currentId);collectionGrid.innerHTML=`<div class="discover-stack"><section class="admin-card discover-card"><div class="section-head"><div><span class="eyebrow">YOUTUBE DISCOVERY</span><h2>Busca y reproduce</h2></div><span class="source-badge">YouTube</span></div><p class="muted">La reproducción usa el reproductor oficial de YouTube. No se descarga ni se separa el audio. YouTube se pausa si GMusic queda en segundo plano. Si escuchas un video durante 30 segundos o más, GMusic registra esa escucha en tu cuenta para gestionar música solicitada.</p><div class="youtube-search-row"><input id="youtubeSearchInput" maxlength="100" placeholder="Canción o artista" value="${esc(state.youtubeQuery)}"><button id="youtubeSearchBtn" class="primary" ${state.youtubeBusy?"disabled":""}>${state.youtubeBusy?"Buscando…":"Buscar"}</button></div><p id="youtubeSearchStatus" class="status-line">${state.youtubeConfigured===false?"Configura YOUTUBE_API_KEY en Cloudflare para activar esta función.":results.length?`${results.length} resultados disponibles para reproducir.`:"La búsqueda se hace solo al pulsar Buscar para cuidar la cuota diaria."}</p><div class="youtube-results">${results.map((v,i)=>youtubeResultCard(v,i)).join("")||`<p class="muted">Aún no hay resultados.</p>`}</div></section><section class="admin-card discover-card"><div class="section-head"><div><span class="eyebrow">GMUSIC DJ</span><h2>Sesión inteligente</h2></div>${state.dj.active?`<span class="chip">Activo · ${esc(djModeLabel(state.dj.mode))}</span>`:""}</div><p class="muted">El DJ elige dinámicamente dentro de tu biblioteca usando tus favoritos, reproducciones, recientes y feedback local. No usa datos de otros usuarios.</p><div class="dj-modes">${["taste","favorites","energy","chill","discovery","surprise"].map(m=>`<button class="${state.dj.active&&state.dj.mode===m?"primary":"chip"}" data-dj-start="${m}">${esc(djModeLabel(m))}</button>`).join("")}${state.dj.active?`<button class="danger-text" id="djStopBtn">Detener DJ</button>`:""}</div>${state.dj.active?`<div class="dj-now"><div><span class="eyebrow">EL DJ ESTÁ ESCUCHANDO</span><strong>${esc(current?.title||"Preparando siguiente canción")}</strong><small>${esc(current?.artist||"")}</small></div><div class="admin-row-actions"><button class="chip" data-dj-feedback="more">👍 Más de esto</button><button class="chip" data-dj-feedback="less">👎 Menos</button><button class="chip" data-dj-feedback="energy">🔥 Más energía</button><button class="chip" data-dj-feedback="chill">🌙 Más chill</button><button class="chip" data-dj-feedback="surprise">✨ Sorpréndeme</button></div></div>`:""}${state.dj.active&&state.dj.mode==="discovery"?`<button id="djYoutubeDiscoveryBtn" class="ghost">Buscar descubrimiento relacionado en YouTube</button><small class="muted">Esta acción consume una búsqueda de la cuota de YouTube y por eso solo se ejecuta cuando tú la pulsas.</small>`:""}</section></div>`;el("youtubeSearchBtn")?.addEventListener("click",()=>searchYouTubeFromDiscover());el("youtubeSearchInput")?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();searchYouTubeFromDiscover();}});collectionGrid.querySelectorAll("[data-youtube-play]").forEach(b=>b.addEventListener("click",()=>playYouTubeResult(Number(b.dataset.youtubePlay),state.youtubeSource||"search")));collectionGrid.querySelectorAll("[data-dj-start]").forEach(b=>b.addEventListener("click",()=>startDj(b.dataset.djStart)));collectionGrid.querySelectorAll("[data-dj-feedback]").forEach(b=>b.addEventListener("click",()=>adjustDjFeedback(b.dataset.djFeedback)));el("djStopBtn")?.addEventListener("click",stopDj);el("djYoutubeDiscoveryBtn")?.addEventListener("click",()=>searchYouTubeForDj());}
 function youtubeResultCard(v,i){return `<article class="youtube-result"><img src="${esc(v.thumbnail||"/icon.svg")}" alt=""><div><strong>${esc(v.title)}</strong><small>${esc(v.channel)}${v.duration_seconds?` · ${formatTime(v.duration_seconds)}`:""}</small></div><div class="admin-row-actions"><button class="primary" data-youtube-play="${i}">▶ Reproducir</button><a class="chip" href="${esc(v.youtube_url)}" target="_blank" rel="noopener">YouTube ↗</a></div></article>`;}
@@ -1401,7 +1576,7 @@ function renderStats(){
   collectionGrid.querySelectorAll("[data-stat-play]").forEach(b=>b.addEventListener("click",()=>playInContext(state.tracks.map(t=>t.id),b.dataset.statPlay)));
 }
 
-async function apiFetch(path,options={}){const headers=new Headers(options.headers||{});return fetch(path,{...options,headers,credentials:"same-origin",cache:options.cache||"no-store"});}
+async function apiFetch(path,options={}){const headers=new Headers(options.headers||{});if(isNativeAndroid&&state.sessionToken&&!headers.has("authorization"))headers.set("authorization",`Bearer ${state.sessionToken}`);return fetch(path,{...options,headers,credentials:"same-origin",cache:options.cache||"no-store"});}
 function formatTime(seconds){seconds=Math.max(0,Math.floor(Number(seconds)||0));return `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,"0")}`;}
 function formatBytes(bytes){const mb=Number(bytes||0)/1024/1024;return mb>=1?`${mb.toFixed(1)} MB`:`${Math.round(Number(bytes||0)/1024)} KB`;}
 function normalize(v){return String(v||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/\s+/g," ").trim();}

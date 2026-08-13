@@ -7,7 +7,7 @@
   <meta name="description" content="GMusic, biblioteca musical personal por streaming." />
   <meta name="robots" content="noindex,nofollow,noarchive" />
   <title>GMusic</title>
-  <link rel="manifest" href="/manifest.webmanifest?v=3.5.6" />
+  <link rel="manifest" href="/manifest.webmanifest?v=4.0.0" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css?v=15-youtube-dj" />
 </head>
@@ -28,7 +28,7 @@
         <button class="nav-item" data-view="stats">▥ <span>Estadísticas</span></button>
         <button class="nav-item hidden" data-view="admin" data-admin-only>⚙ <span>Administración</span></button>
       </nav>
-      <div class="credits"><span id="versionLabel">v3.5.6</span></div>
+      <div class="credits"><span id="versionLabel">v4.0.0</span></div>
     </aside>
 
     <main>
@@ -97,6 +97,8 @@
 
   <dialog id="editTrackDialog"><div class="edit-track-panel"><div class="dialog-head"><div><p class="eyebrow">BIBLIOTECA</p><h2>Editar canción</h2></div><button type="button" class="icon-btn" data-close="editTrackDialog">✕</button></div><div class="form-grid"><label>Título<input id="editTitle" maxlength="160" /></label><label>Artista<input id="editArtist" maxlength="160" /></label><label>Álbum<input id="editAlbum" maxlength="160" /></label><label>Año<input id="editYear" maxlength="8" inputmode="numeric" /></label><label>Género<input id="editGenre" maxlength="80" /></label><label>N.º de pista<input id="editTrackNumber" maxlength="12" /></label></div><p id="editTrackStatus" class="status-line"></p><div class="dialog-actions"><button type="button" class="primary" id="saveTrackMetadataBtn">Guardar cambios</button></div></div></dialog>
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="/app.js?v=21-legacy-advance"></script>
+  <script src="/native-audio-bridge.js?v=4.0.0"></script>
+  <script src="/native-secure-session-bridge.js?v=4.0.0"></script>
+  <script type="module" src="/app.js?v=40-native-media3"></script>
 </body>
 </html>

@@ -1,0 +1,31 @@
+GMUSIC V4.0 NATIVE - PASOS
+
+1) PRIMERO publica Cloudflare:
+   PUBLICAR_GMUSIC_V4_WEB.bat
+
+2) En GitHub > gmusic-apk > Code > Add file > Upload files.
+
+3) Del ZIP PATCH, arrastra CONSERVANDO LAS CARPETAS:
+   .github
+   android-overrides
+   public
+   src
+   tests
+   y los archivos package.json + capacitor.config.json
+
+4) Commit changes directo a la rama principal.
+
+5) Ve a Actions.
+   Debe aparecer: Build GMusic v4 Native APK
+
+6) Run workflow.
+
+7) Si sale VERDE, descarga Artifact:
+   GMusic-v4.0-native-apk
+
+8) Descomprime e instala:
+   GMusic-v4.0-native.apk
+
+9) Inicia sesión una vez y prueba pantalla apagada:
+   canción A -> canción B -> canción C.
+   También prueba Play/Pausa/Siguiente/Anterior desde controles multimedia.

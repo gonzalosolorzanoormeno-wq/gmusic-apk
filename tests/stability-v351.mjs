@@ -58,8 +58,8 @@ assert.doesNotMatch(adminPanel,/\/api\/admin\/library\/audit/);
 assert.match(app,/setupAdminLazyLoading/);
 
 // Version/cache consistency.
-assert.match(app,/const VERSION = "3\.5\.6"/);
-assert.match(backend,/const VERSION = "3\.5\.6"/);
-assert.match(sw,/const VERSION = "3\.5\.6"/);
+assert.match(app,/const VERSION = "4\.0\.0"/);
+assert.match(backend,/const VERSION = "4\.0\.0"/);
+assert.match(sw,/const VERSION = "4\.0\.0"/);
 
-console.log('✓ Stability + KV optimization v3.5.6 compatibility tests OK');
+console.log('✓ Stability + KV optimization v4.0 compatibility tests OK');

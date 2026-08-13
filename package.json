@@ -1,12 +1,12 @@
 {
   "name": "gmusic-personal-streaming",
-  "version": "3.5.6",
+  "version": "4.0.0",
   "private": true,
-  "description": "GMusic v3.5.6 + first Android APK wrapper build source.",
+  "description": "GMusic v4.0 with Android native Media3/ExoPlayer background playback.",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js && node --check public/app.js && node --check public/dj-engine.js && node --check public/sw.js && node tests/auth-smoke.mjs && node tests/privacy-smoke.mjs && node tests/privacy-phase11.mjs && node tests/metadata-normalization.mjs && node tests/offline-startup.mjs && node tests/media-session-favorites.mjs && node tests/metadata-intelligence.mjs && node tests/offline-favorites-v2.mjs && node tests/artist-intelligence-v34.mjs && node tests/artist-artwork-resilience-v342.mjs && node tests/music-requests-v34.mjs && node tests/docx-v34.mjs && node tests/youtube-discovery-v35.mjs && node tests/dj-v35.mjs && node tests/kv-saver-v35.mjs && node tests/stability-v351.mjs && node tests/legacy-auto-advance-v356.mjs",
+    "check": "node --check src/index.js && node --check public/app.js && node --check public/dj-engine.js && node --check public/sw.js && node tests/auth-smoke.mjs && node tests/privacy-smoke.mjs && node tests/privacy-phase11.mjs && node tests/metadata-normalization.mjs && node tests/offline-startup.mjs && node tests/media-session-favorites.mjs && node tests/metadata-intelligence.mjs && node tests/offline-favorites-v2.mjs && node tests/artist-intelligence-v34.mjs && node tests/artist-artwork-resilience-v342.mjs && node tests/music-requests-v34.mjs && node tests/docx-v34.mjs && node tests/youtube-discovery-v35.mjs && node tests/dj-v35.mjs && node tests/kv-saver-v35.mjs && node tests/stability-v351.mjs && node tests/legacy-auto-advance-v356.mjs && node tests/android-native-media3-v400.mjs",
     "generate-key": "node -e \"console.log(require('crypto').randomBytes(24).toString('base64url'))\""
   },
   "devDependencies": {

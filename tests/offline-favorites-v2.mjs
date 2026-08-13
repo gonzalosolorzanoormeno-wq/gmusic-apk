@@ -12,6 +12,6 @@ assert.match(app,/limitBytes/,'offline storage limit should exist');
 assert.match(app,/navigator\.storage\?\.estimate/,'storage estimate should be used when available');
 assert.match(app,/networkAllowsAutoDownload/,'network policy check should exist');
 assert.match(html,/Centro offline/,'offline center UI should exist');
-assert.match(sw,/const VERSION = "3\.5\.6"/,'service worker must be bumped');
+assert.match(sw,/const VERSION = "4\.0\.0"/,'service worker must be bumped');
 assert.match(sw,/startsWith\("gmusic-shell-"\)/,'service worker cleanup should only target shell caches');
 console.log('✓ Favoritos Offline 2.0 tests OK');
