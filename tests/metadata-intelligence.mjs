@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { normalizedSimilarity, durationSimilarity, scoreMusicBrainzCandidate } from '../src/index.js';
+
+assert.equal(normalizedSimilarity('LUNA','luna'),1,'title comparison should ignore case');
+assert.ok(normalizedSimilarity('Feid','FEID') > .99,'artist comparison should normalize case');
+assert.equal(durationSimilarity(180,181000),1,'duration within 2s should be exact tier');
+const candidate={id:'11111111-1111-4111-8111-111111111111',title:'LUNA',length:196000,'artist-credit':[{artist:{name:'Feid'}}],releases:[{id:'22222222-2222-4222-8222-222222222222',title:'FERXXOCALIPSIS',status:'Official',date:'2023-12-01','release-group':{'primary-type':'Album','secondary-types':[]}}]};
+const scored=scoreMusicBrainzCandidate(candidate,{title:'LUNA',artist:'Feid',album:'FERXXOCALIPSIS',year:'2023',duration_seconds:196});
+assert.ok(scored.score>=90,'exact candidate should be high confidence');
+assert.equal(scored.proposal.album,'FERXXOCALIPSIS');
+assert.equal(scored.proposal.year,'2023');
+assert.equal(scored.proposal.mb_recording_id,candidate.id);
+const worker=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+const app=fs.readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+assert.match(worker,/musicbrainz\.org\/ws\/2\/recording/,'MusicBrainz search endpoint should exist');
+assert.match(worker,/metadataConfidence|scoreMusicBrainzCandidate|status: score >= 90/,'confidence scoring should exist');
+assert.match(worker,/coverartarchive\.org\/release/,'Cover Art Archive proxy should exist');
+assert.match(app,/scanMetadataLibrary/,'admin library scan UI should exist');
+assert.match(app,/applySafeMetadataMatches/,'safe bulk apply should exist');
+console.log('✓ Metadata Intelligence tests OK');

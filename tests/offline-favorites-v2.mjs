@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const app=fs.readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+const sw=fs.readFileSync(new URL('../public/sw.js',import.meta.url),'utf8');
+assert.match(app,/Mantener mis Favoritos|offlineAutoFavorites/,'auto favorites offline setting should exist');
+assert.match(app,/offlineMirrorFavorites/,'mirror favorites setting should exist');
+assert.match(app,/offlineBatchPaused/,'pause state should exist');
+assert.match(app,/offlineBatchCancelled/,'cancel state should exist');
+assert.match(app,/offlineFailedIds/,'failed download retry state should exist');
+assert.match(app,/limitBytes/,'offline storage limit should exist');
+assert.match(app,/navigator\.storage\?\.estimate/,'storage estimate should be used when available');
+assert.match(app,/networkAllowsAutoDownload/,'network policy check should exist');
+assert.match(html,/Centro offline/,'offline center UI should exist');
+assert.match(sw,/const VERSION = "3\.5\.6"/,'service worker must be bumped');
+assert.match(sw,/startsWith\("gmusic-shell-"\)/,'service worker cleanup should only target shell caches');
+console.log('✓ Favoritos Offline 2.0 tests OK');
