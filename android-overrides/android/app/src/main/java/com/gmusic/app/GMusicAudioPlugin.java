@@ -33,6 +33,7 @@ public class GMusicAudioPlugin extends Plugin {
     private ListenableFuture<MediaController> controllerFuture;
     private MediaController controller;
     private Executor mainExecutor;
+    private boolean playerListenerAttached = false;
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
 
     private final Runnable progressRunnable = new Runnable() {
@@ -85,11 +86,13 @@ public class GMusicAudioPlugin extends Plugin {
         SessionToken token = new SessionToken(
                 getContext(),
                 new ComponentName(getContext(), GMusicPlaybackService.class));
-        controllerFuture = new MediaController.Builder(getContext(), token).buildAsync();
+        controllerFuture = new MediaController.Builder(getContext(), token)
+                .setApplicationLooper(Looper.getMainLooper())
+                .buildAsync();
         controllerFuture.addListener(() -> {
             try {
-                controller = controllerFuture.get();
-                controller.addListener(playerListener);
+                MediaController ready = controllerFuture.get();
+                attachController(ready);
                 String storedToken = SecureSessionStore.token(getContext());
                 if (!storedToken.isEmpty()) GMusicPlaybackService.updateRuntimeToken(storedToken);
                 emitPlaybackState();
@@ -99,13 +102,34 @@ public class GMusicAudioPlugin extends Plugin {
         }, mainExecutor);
     }
 
-    private void withController(PluginCall call, ControllerAction action) {
-        if (controller != null) {
+    private void attachController(MediaController ready) {
+        controller = ready;
+        if (!playerListenerAttached) {
+            ready.addListener(playerListener);
+            playerListenerAttached = true;
+        }
+    }
+
+    private void runControllerAction(PluginCall call, MediaController ready, ControllerAction action) {
+        Runnable task = () -> {
             try {
-                action.run(controller);
+                action.run(ready);
             } catch (Exception error) {
                 call.reject(error.getMessage() == null ? "Error del reproductor" : error.getMessage());
             }
+        };
+
+        if (Looper.myLooper() == ready.getApplicationLooper()) {
+            task.run();
+        } else {
+            new Handler(ready.getApplicationLooper()).post(task);
+        }
+    }
+
+    private void withController(PluginCall call, ControllerAction action) {
+        MediaController readyNow = controller;
+        if (readyNow != null) {
+            runControllerAction(call, readyNow, action);
             return;
         }
         if (controllerFuture == null) {
@@ -115,9 +139,8 @@ public class GMusicAudioPlugin extends Plugin {
         controllerFuture.addListener(() -> {
             try {
                 MediaController ready = controllerFuture.get();
-                controller = ready;
-                ready.addListener(playerListener);
-                action.run(ready);
+                attachController(ready);
+                runControllerAction(call, ready, action);
             } catch (Exception error) {
                 call.reject(error.getMessage() == null ? "Motor de audio no disponible" : error.getMessage());
             }
@@ -265,17 +288,33 @@ public class GMusicAudioPlugin extends Plugin {
     }
 
     private void emitPlaybackState() {
-        if (controller == null) return;
-        notifyListeners("playbackStateChanged", stateObject(controller));
+        MediaController ready = controller;
+        if (ready == null) return;
+        if (Looper.myLooper() == ready.getApplicationLooper()) {
+            notifyListeners("playbackStateChanged", stateObject(ready));
+        } else {
+            new Handler(ready.getApplicationLooper()).post(() -> {
+                MediaController current = controller;
+                if (current != null) notifyListeners("playbackStateChanged", stateObject(current));
+            });
+        }
     }
 
     @Override
     protected void handleOnDestroy() {
         progressHandler.removeCallbacks(progressRunnable);
-        if (controller != null) {
-            controller.removeListener(playerListener);
-            controller.release();
-            controller = null;
+        MediaController ready = controller;
+        if (ready != null) {
+            Runnable cleanup = () -> {
+                if (controller != null) {
+                    controller.removeListener(playerListener);
+                    playerListenerAttached = false;
+                    controller.release();
+                    controller = null;
+                }
+            };
+            if (Looper.myLooper() == ready.getApplicationLooper()) cleanup.run();
+            else new Handler(ready.getApplicationLooper()).post(cleanup);
         }
         super.handleOnDestroy();
     }
