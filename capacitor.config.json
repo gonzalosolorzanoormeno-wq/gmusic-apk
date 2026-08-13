@@ -1,0 +1,15 @@
+{
+  "appId": "com.gmusic.app",
+  "appName": "GMusic",
+  "webDir": "public",
+  "server": {
+    "url": "https://gmusic-player.gmusic-cloud-25.workers.dev",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}

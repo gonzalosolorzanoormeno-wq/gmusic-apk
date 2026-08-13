@@ -1,0 +1,12 @@
+APP_TOKEN="pon-aqui-una-clave-larga-y-privada"
+USER_CODES={"codigo-para-mi":{"role":"admin","name":"Tu nombre"},"codigo-para-mi-amiga":{"role":"listener","name":"Mi amiga"}}
+GOOGLE_CLIENT_ID="tu-client-id.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="tu-client-secret"
+GOOGLE_REFRESH_TOKEN="tu-refresh-token"
+
+# Opcional para analizar playlists propias/colaborativas de Spotify
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+
+# YouTube Data API v3 (solo backend)
+YOUTUBE_API_KEY=
