@@ -32,8 +32,19 @@ jobs:
         run: |
           sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install pinned dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify Capacitor versions
+        run: |
+          node -e "const p=require('./node_modules/@capacitor/core/package.json'); if(p.version!=='6.1.2') throw new Error('Capacitor core inesperado: '+p.version)"
+          node -e "const p=require('./node_modules/@capacitor/cli/package.json'); if(p.version!=='6.1.2') throw new Error('Capacitor CLI inesperado: '+p.version)"
+          node -e "const p=require('./node_modules/@capacitor/android/package.json'); if(p.version!=='6.1.2') throw new Error('Capacitor Android inesperado: '+p.version)"
+
+      - name: Align Capacitor Android Gradle plugin
+        run: |
+          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.10.1/" node_modules/@capacitor/android/capacitor/build.gradle
+          grep "com.android.tools.build:gradle:8.10.1" node_modules/@capacitor/android/capacitor/build.gradle
 
       - name: Run GMusic tests
         run: npm run check
@@ -51,6 +62,8 @@ jobs:
           sed -i "s/targetSdkVersion = [0-9]*/targetSdkVersion = 35/" android/variables.gradle
           sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.10.1/" android/build.gradle
           sed -i "s#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.11.1-bin.zip#" android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/versionCode [0-9][0-9]*/versionCode 40000/' android/app/build.gradle
+          sed -i 's/versionName "[^"]*"/versionName "4.0.0"/' android/app/build.gradle
 
       - name: Apply GMusic native Media3 files
         run: |
@@ -65,13 +78,34 @@ jobs:
           grep "compileSdkVersion = 36" android/variables.gradle
           grep "targetSdkVersion = 35" android/variables.gradle
           grep "com.android.tools.build:gradle:8.10.1" android/build.gradle
+          grep "com.android.tools.build:gradle:8.10.1" node_modules/@capacitor/android/capacitor/build.gradle
+          grep "gradle-8.11.1-bin.zip" android/gradle/wrapper/gradle-wrapper.properties
+          grep "versionCode 40000" android/app/build.gradle
+          grep 'versionName "4.0.0"' android/app/build.gradle
+          grep 'media3Version = "1.10.1"' android/app/build.gradle
+          grep "media3-exoplayer" android/app/build.gradle
           grep "media3-session" android/app/build.gradle
+          test -f android/app/src/main/java/com/gmusic/app/GMusicPlaybackService.java
+          test -f android/app/src/main/java/com/gmusic/app/GMusicAudioPlugin.java
+          test -f android/app/src/main/java/com/gmusic/app/GMusicSecureSessionPlugin.java
+          test -f android/app/src/main/java/com/gmusic/app/SecureSessionStore.java
+          grep "FOREGROUND_SERVICE_MEDIA_PLAYBACK" android/app/src/main/AndroidManifest.xml
+          grep "androidx.media3.session.MediaSessionService" android/app/src/main/AndroidManifest.xml
+
+      - name: Show Gradle environment
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --version
 
       - name: Build debug APK
         working-directory: android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Verify generated APK
+        run: |
+          test -s android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Rename APK
         run: |
