@@ -1,36 +1,85 @@
-name: Build GMusic First APK
+name: Build GMusic Native APK
+
 on:
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - uses: actions/setup-java@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 35
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Install dependencies
         run: npm install
+
       - name: Run GMusic tests
         run: npm run check
+
       - name: Create Android project
         run: npx cap add android
+
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Configure Android API 35 and Media3 requirements
+        run: |
+          sed -i "s/minSdkVersion = [0-9]*/minSdkVersion = 23/" android/variables.gradle
+          sed -i "s/compileSdkVersion = [0-9]*/compileSdkVersion = 35/" android/variables.gradle
+          sed -i "s/targetSdkVersion = [0-9]*/targetSdkVersion = 35/" android/variables.gradle
+          sed -i "s/com.android.tools.build:gradle:[0-9.]*/com.android.tools.build:gradle:8.6.1/" android/build.gradle
+          sed -i "s#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip#" android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Apply GMusic native Media3 files
+        run: |
+          cp android-overrides/android/app/src/main/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          mkdir -p android/app/src/main/java/com/gmusic/app
+          cp android-overrides/android/app/src/main/java/com/gmusic/app/*.java android/app/src/main/java/com/gmusic/app/
+          cat android-overrides/media3-dependencies.gradle >> android/app/build.gradle
+
+      - name: Verify Android build configuration
+        run: |
+          grep "minSdkVersion = 23" android/variables.gradle
+          grep "compileSdkVersion = 35" android/variables.gradle
+          grep "targetSdkVersion = 35" android/variables.gradle
+          grep "com.android.tools.build:gradle:8.6.1" android/build.gradle
+          grep "media3-session" android/app/build.gradle
+
       - name: Build debug APK
         working-directory: android
-        run: chmod +x gradlew && ./gradlew assembleDebug --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk GMusic-v3.5.6-first.apk
-      - uses: actions/upload-artifact@v4
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk GMusic-v4.0-native.apk
+
+      - name: Upload GMusic APK
+        uses: actions/upload-artifact@v4
         with:
-          name: GMusic-v3.5.6-first-apk
-          path: GMusic-v3.5.6-first.apk
+          name: GMusic-v4.0-native-apk
+          path: GMusic-v4.0-native.apk
           retention-days: 30
